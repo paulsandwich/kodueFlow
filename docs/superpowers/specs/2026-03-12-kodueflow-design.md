@@ -87,9 +87,9 @@ kodueFlow/
 | BPM | 數字輸入 + ▲▼ 按鈕 | 120 | 20–300 |
 | 拍號（分子） | 數字輸入 | 4 | 1–16 |
 | 拍號（分母） | 下拉選單 | 4 | 2, 4, 8, 16 |
-| 顯示小節數 | 數字輸入 | 8 | 1–64 |
+| 每循環小節數 | 數字輸入 | 8 | 1–64 |
 | 循環次數 | 數字輸入 | 4 | 1–99，或 ∞ |
-| 細分 | 開關 + 下拉 | 關 | ♩ ♪ ♬（1/2, 1/4, 1/8） |
+| 細分 | 開關 + 下拉 | 關 | 2 / 3 / 4（每拍細分數） |
 | Start / Stop | 按鈕 | — | — |
 
 ---
@@ -101,9 +101,10 @@ kodueFlow/
 
 ### 節拍球
 - 常態：`#c7d2fe`（淡靛藍）
-- 觸發時（每拍）：scale 1.0 → 1.45，顏色 → `#5a67d8`，加 glow shadow
-- 動畫時長：對應一拍長度的 30%（快速回彈）
-- 強拍（每小節第一拍）可選用不同顏色或更大 scale
+- 弱拍觸發：scale 1.0 → 1.45，顏色 → `#5a67d8`，加 glow shadow
+- 強拍（每小節第一拍）觸發：scale 1.0 → 1.6，顏色 → `#3730a3`，glow 加強
+- 細分拍觸發：無球動畫（僅音效），避免視覺干擾
+- 動畫時長：一拍長度的 30%，clamped 至 50ms–300ms（避免極快/極慢 BPM 時動畫不可見或過慢）
 
 ### 小節網格
 - 每個小節顯示為一個格子
@@ -135,8 +136,31 @@ kodueFlow/
 ```
 
 **關鍵參數：**
-- `LOOKAHEAD_MS = 25` — scheduler 呼叫間隔
-- `SCHEDULE_AHEAD_TIME = 0.1` — 預排窗口（秒）
+- `SCHEDULER_INTERVAL_MS = 25` — scheduler 呼叫間隔（setTimeout 頻率）
+- `SCHEDULE_AHEAD_TIME = 0.1` — 預排窗口（秒，即 100ms）
+
+**Beat Duration 計算：**
+```js
+beatDuration = (60 / bpm) * (4 / beatUnit)
+// beatUnit = 拍號分母（2/4/8/16）
+// 例：BPM=120, beatUnit=4 → beatDuration = 0.5s
+// 例：BPM=120, beatUnit=8 → beatDuration = 0.25s（八分音符為一拍）
+```
+
+**Scheduler 與 UI 的介面：`beatQueue`**
+
+`scheduler.js` 每次預排時，將即將到來的節拍寫入共享陣列：
+```js
+beatQueue.push({ beatTime, beatNumber, measureNumber, isDownbeat })
+// beatTime: audioContext 時間戳
+// beatNumber: 在小節內的第幾拍（0-indexed）
+// measureNumber: 第幾個小節（0-indexed）
+// isDownbeat: 是否為強拍（beatNumber === 0）
+```
+
+`ui.js` 的 `requestAnimationFrame` loop 每幀掃描 `beatQueue`，取出 `beatTime <= audioContext.currentTime` 的條目，觸發對應動畫並從 queue 移除。
+
+細分拍（subdivision）事件**不進入 beatQueue**，由 `scheduler.js` 內部直接排程 OscillatorNode，不觸發任何視覺動畫。
 
 ### 音效設計
 
@@ -165,9 +189,9 @@ state = {
 
   // 執行中狀態（唯讀）
   isPlaying: false,
-  currentBeat: 0,
-  currentMeasure: 0,
-  currentLoop: 0,
+  currentBeat: 0,        // 0-indexed，顯示時 +1
+  currentMeasure: 0,     // 0-indexed，顯示時 +1
+  currentLoop: 0,        // 0-indexed，顯示時 +1
   nextBeatTime: 0,       // audioContext 時間戳
 }
 ```
@@ -179,15 +203,30 @@ playing → idle（按 Stop，或所有循環結束）
 playing → playing（loop_complete，繼續下一循環）
 ```
 
+**播放中修改參數的行為：**
+- BPM 變更：**立即生效**，下一個 scheduler 週期採用新 BPM
+- 拍號、小節數、循環數變更：**在當前小節結束後生效**（避免中途撕裂）
+- 細分開關：**立即生效**
+
+**循環結束 / Stop 後的視覺狀態：**
+- 所有循環正常結束：小節網格保留最後狀態 1 秒後淡出重置，節拍球回到常態色
+- 按 Stop 中途停止：立即停止動畫，所有計數歸零，網格清空
+- 再次按 Start：從頭開始（currentBeat = 0, currentMeasure = 0, currentLoop = 0）
+
 ---
 
 ## Error Handling
 
 | 情境 | 處理方式 |
 |------|----------|
-| 瀏覽器不支援 Web Audio API | 頁面頂部顯示提示橫幅，功能降級為視覺模式 |
+| 瀏覽器不支援 Web Audio API | 頁面頂部顯示提示橫幅，功能降級為視覺模式（動畫改由 `setInterval` 驅動，精度降低，無音效） |
 | AudioContext 被瀏覽器暫停（autoplay policy） | 點擊 Start 時自動 `resume()`，不需使用者額外操作 |
 | BPM 輸入超出範圍 | clamp 到合法值（20–300），即時提示 |
+| 播放中修改拍號或小節數 | 當前小節結束後生效，不中斷播放 |
+| 細分值導致 tick 過密（如 16/16 + 4x subdivision 在 300 BPM） | 允許，無上限限制；使用者自行判斷可用性 |
+
+**已知限制（v1）：**
+- 不支援鍵盤快捷鍵（Space 開始/停止、↑↓ 調 BPM）— 預留為 v2 功能
 
 ---
 
