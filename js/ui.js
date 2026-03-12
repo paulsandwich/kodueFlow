@@ -3,40 +3,55 @@
 // Depends on metronome.js (metronomeState, pendingChanges, getBeatDuration,
 //                          metronomeStart, metronomeStop)
 
-// Task 5.1: RAF loop handle
+// RAF loop handle
 var rafId = null;
 
 // DOM refs
-var ballEl, gridEl, dashMeasureEl, dashLoopEl, dashBpmEl;
+var dotsEl, gridEl, dashMeasureEl, dashLoopEl, dashBpmEl;
 var bpmInput, beatsInput, beatUnitSelect, measuresInput;
 var loopCountInput, infiniteCheck, subdivCheck, subdivValueSelect;
-var startStopBtn, warningBanner;
+var startStopBtn, applyBtn, warningBanner;
 
-// Task 5.2 + 5.3 + 5.4: Animate beat ball
-function animateBeat(isDownbeat) {
+// Apply button dirty state
+var isDirty = false;
+var pendingUI = {};
+
+// Task 3.1: Render N beat dots matching beatsPerMeasure
+function renderBeatDots(beatsPerMeasure) {
+  dotsEl.innerHTML = '';
+  for (var i = 0; i < beatsPerMeasure; i++) {
+    var dot = document.createElement('div');
+    dot.className = 'beat-dot' + (i === 0 ? ' downbeat' : '');
+    dotsEl.appendChild(dot);
+  }
+}
+
+// Task 3.3: Animate the dot at beatNumber position
+function animateBeat(beatNumber, isDownbeat) {
+  var dot = dotsEl.children[beatNumber];
+  if (!dot) return;
+
   var beatDurMs = getBeatDuration() * 1000;
   var animDur   = Math.min(Math.max(beatDurMs * 0.3, 50), 300);
 
   if (isDownbeat) {
-    // Task 5.3: Downbeat — stronger
-    ballEl.style.transform       = 'scale(1.6)';
-    ballEl.style.backgroundColor = '#3730a3';
-    ballEl.style.boxShadow       = '0 0 24px rgba(55,48,163,0.7)';
+    dot.style.transform       = 'scale(1.6)';
+    dot.style.backgroundColor = '#3730a3';
+    dot.style.boxShadow       = '0 0 24px rgba(55,48,163,0.7)';
   } else {
-    // Task 5.4: Regular beat
-    ballEl.style.transform       = 'scale(1.45)';
-    ballEl.style.backgroundColor = '#5a67d8';
-    ballEl.style.boxShadow       = '0 0 16px rgba(90,103,216,0.6)';
+    dot.style.transform       = 'scale(1.45)';
+    dot.style.backgroundColor = '#5a67d8';
+    dot.style.boxShadow       = '0 0 16px rgba(90,103,216,0.6)';
   }
 
   setTimeout(function() {
-    ballEl.style.transform       = 'scale(1)';
-    ballEl.style.backgroundColor = '#c7d2fe';
-    ballEl.style.boxShadow       = 'none';
+    dot.style.transform       = 'scale(1)';
+    dot.style.backgroundColor = '';
+    dot.style.boxShadow       = 'none';
   }, animDur);
 }
 
-// Task 5.5: Update measure grid cells
+// Update measure grid cells
 function updateMeasureGrid(currentMeasure, totalMeasures) {
   var cells = gridEl.querySelectorAll('.measure-cell');
 
@@ -49,6 +64,12 @@ function updateMeasureGrid(currentMeasure, totalMeasures) {
       gridEl.appendChild(cell);
     }
     cells = gridEl.querySelectorAll('.measure-cell');
+
+    // Set columns and exact width so grid doesn't stretch full container
+    var cols = Math.min(totalMeasures, 8);
+    var cellW = 40, gap = 6, pad = 8;
+    gridEl.style.gridTemplateColumns = 'repeat(' + cols + ', ' + cellW + 'px)';
+    gridEl.style.width = (cols * cellW + (cols - 1) * gap + pad) + 'px';
   }
 
   cells.forEach(function(cell, i) {
@@ -65,22 +86,23 @@ function updateMeasureGrid(currentMeasure, totalMeasures) {
   });
 }
 
-// Task 5.6: Update dashboard text
+// Update dashboard text
 function updateDashboard(measureNumber, loopNumber) {
   dashMeasureEl.textContent = (measureNumber + 1) + ' / ' + metronomeState.totalMeasures;
   var loopTotal = metronomeState.infiniteLoop ? '∞' : metronomeState.loopCount;
   dashLoopEl.textContent = (loopNumber + 1) + ' / ' + loopTotal;
 }
 
-// Task 5.1: requestAnimationFrame main loop — drains beatQueue
+// requestAnimationFrame main loop — drains beatQueue
 function startRAF() {
   function loop() {
     var now = audioCtx ? audioCtx.currentTime : performance.now() / 1000;
     var i = 0;
     while (i < beatQueue.length) {
       var entry = beatQueue[i];
-      if (entry.beatTime <= now + 0.01) { // small tolerance
-        animateBeat(entry.isDownbeat);
+      if (entry.beatTime <= now + 0.01) {
+        // Task 3.4: pass beatNumber to animateBeat
+        animateBeat(entry.beatNumber, entry.isDownbeat);
         updateDashboard(entry.measureNumber, entry.loopNumber);
         updateMeasureGrid(entry.measureNumber, metronomeState.totalMeasures);
         beatQueue.splice(i, 1);
@@ -93,14 +115,17 @@ function startRAF() {
   rafId = requestAnimationFrame(loop);
 }
 
-// Task 5.11: Reset UI after stop
+// Reset UI after stop
 function resetUI() {
   startStopBtn.textContent = '▶ START';
   startStopBtn.classList.remove('active');
-  // Reset ball
-  ballEl.style.transform       = 'scale(1)';
-  ballEl.style.backgroundColor = '#c7d2fe';
-  ballEl.style.boxShadow       = 'none';
+  // Reset all dots to idle
+  var dots = dotsEl.querySelectorAll('.beat-dot');
+  dots.forEach(function(dot) {
+    dot.style.transform       = 'scale(1)';
+    dot.style.backgroundColor = '';
+    dot.style.boxShadow       = 'none';
+  });
   // Clear grid
   updateMeasureGrid(-1, metronomeState.totalMeasures);
   // Reset dashboard
@@ -109,7 +134,7 @@ function resetUI() {
   dashLoopEl.textContent = '- / ' + loopTotal;
 }
 
-// Task 5.12: Natural completion — linger 1s then fade reset
+// Natural completion — linger 1s then fade reset
 function onNaturalComplete() {
   startStopBtn.textContent = '▶ START';
   startStopBtn.classList.remove('active');
@@ -125,13 +150,72 @@ function onNaturalComplete() {
   }, 1000);
 }
 
-// Task 5.10: Start/Stop button handler
+// Task 6.3: setDirty — toggle apply button dirty state
+function setDirty(flag) {
+  isDirty = flag;
+  if (flag) {
+    applyBtn.classList.add('dirty');
+    applyBtn.textContent = '● 有變更，點擊套用';
+  } else {
+    applyBtn.classList.remove('dirty');
+    applyBtn.textContent = '套用結構設定';
+  }
+}
+
+// Task 6.5: applyStructuralChanges — flush pendingUI to state
+function applyStructuralChanges() {
+  // Apply each pending value
+  if (pendingUI.beatsPerMeasure !== undefined) {
+    if (metronomeState.isPlaying) {
+      pendingChanges.beatsPerMeasure = pendingUI.beatsPerMeasure;
+    } else {
+      metronomeState.beatsPerMeasure = pendingUI.beatsPerMeasure;
+    }
+  }
+  if (pendingUI.beatUnit !== undefined) {
+    if (metronomeState.isPlaying) {
+      pendingChanges.beatUnit = pendingUI.beatUnit;
+    } else {
+      metronomeState.beatUnit = pendingUI.beatUnit;
+    }
+  }
+  if (pendingUI.totalMeasures !== undefined) {
+    if (metronomeState.isPlaying) {
+      pendingChanges.totalMeasures = pendingUI.totalMeasures;
+    } else {
+      metronomeState.totalMeasures = pendingUI.totalMeasures;
+      updateMeasureGrid(-1, pendingUI.totalMeasures);
+      dashMeasureEl.textContent = '- / ' + pendingUI.totalMeasures;
+    }
+  }
+  if (pendingUI.loopCount !== undefined) {
+    if (metronomeState.isPlaying) {
+      pendingChanges.loopCount = pendingUI.loopCount;
+    } else {
+      metronomeState.loopCount = pendingUI.loopCount;
+      var loopTotal = metronomeState.infiniteLoop ? '∞' : pendingUI.loopCount;
+      dashLoopEl.textContent = '- / ' + loopTotal;
+    }
+  }
+
+  // Rebuild dots if not playing (if playing, dots rebuild on next measure boundary)
+  if (!metronomeState.isPlaying) {
+    var beats = pendingUI.beatsPerMeasure !== undefined
+      ? pendingUI.beatsPerMeasure
+      : metronomeState.beatsPerMeasure;
+    renderBeatDots(beats);
+  }
+
+  pendingUI = {};
+  setDirty(false);
+}
+
+// Start/Stop button handler
 function onStartStop() {
   if (metronomeState.isPlaying) {
     metronomeStop();
     resetUI();
   } else {
-    // Task 2.7: Ensure AudioContext exists (lazy init) and resume
     if (!audioCtx && !audioFallback) {
       schedulerInit();
     }
@@ -144,11 +228,10 @@ function onStartStop() {
   }
 }
 
-// Task 5.7: BPM input — immediate effect
+// BPM input — immediate effect
 function onBpmInput() {
   var raw = parseInt(bpmInput.value);
   if (isNaN(raw)) return;
-  // Task 6.2: Clamp validation
   var val = Math.min(Math.max(raw, 20), 300);
   if (val !== raw) {
     bpmInput.classList.add('out-of-range');
@@ -171,58 +254,37 @@ function changeBpm(delta) {
 
 // Bind all controls
 function bindControls() {
-  // Task 5.7: BPM
+  // BPM — immediate
   bpmInput.addEventListener('input',  onBpmInput);
   bpmInput.addEventListener('change', onBpmInput);
   document.getElementById('bpm-up').addEventListener('click',   function() { changeBpm(1); });
   document.getElementById('bpm-down').addEventListener('click', function() { changeBpm(-1); });
 
-  // Task 5.8: Time signature (pending)
+  // Task 6.2: Structural inputs — write to pendingUI, setDirty
   beatsInput.addEventListener('change', function() {
     var val = Math.min(Math.max(parseInt(this.value) || 4, 1), 16);
     this.value = val;
-    if (metronomeState.isPlaying) {
-      pendingChanges.beatsPerMeasure = val;
-    } else {
-      metronomeState.beatsPerMeasure = val;
-    }
+    pendingUI.beatsPerMeasure = val;
+    setDirty(true);
   });
   beatUnitSelect.addEventListener('change', function() {
-    var val = parseInt(this.value);
-    if (metronomeState.isPlaying) {
-      pendingChanges.beatUnit = val;
-    } else {
-      metronomeState.beatUnit = val;
-    }
+    pendingUI.beatUnit = parseInt(this.value);
+    setDirty(true);
   });
-
-  // Task 5.8: Measures (pending)
   measuresInput.addEventListener('change', function() {
     var val = Math.min(Math.max(parseInt(this.value) || 8, 1), 64);
     this.value = val;
-    if (metronomeState.isPlaying) {
-      pendingChanges.totalMeasures = val;
-    } else {
-      metronomeState.totalMeasures = val;
-      updateMeasureGrid(-1, val);
-      dashMeasureEl.textContent = '- / ' + val;
-    }
+    pendingUI.totalMeasures = val;
+    setDirty(true);
   });
-
-  // Task 5.8: Loop count (pending)
   loopCountInput.addEventListener('change', function() {
     var val = Math.min(Math.max(parseInt(this.value) || 4, 1), 99);
     this.value = val;
-    if (metronomeState.isPlaying) {
-      pendingChanges.loopCount = val;
-    } else {
-      metronomeState.loopCount = val;
-      var loopTotal = metronomeState.infiniteLoop ? '∞' : val;
-      dashLoopEl.textContent = '- / ' + loopTotal;
-    }
+    pendingUI.loopCount = val;
+    setDirty(true);
   });
 
-  // Infinite loop toggle
+  // Infinite loop toggle — immediate (not structural)
   infiniteCheck.addEventListener('change', function() {
     metronomeState.infiniteLoop = this.checked;
     loopCountInput.disabled = this.checked;
@@ -230,7 +292,7 @@ function bindControls() {
     dashLoopEl.textContent = (metronomeState.isPlaying ? dashLoopEl.textContent.split('/')[0] : '- ') + '/ ' + loopTotal;
   });
 
-  // Task 5.9: Subdivision — immediate effect
+  // Subdivision — immediate effect
   subdivCheck.addEventListener('change', function() {
     metronomeState.subdivisionEnabled = this.checked;
     subdivValueSelect.disabled = !this.checked;
@@ -239,14 +301,17 @@ function bindControls() {
     metronomeState.subdivisionValue = parseInt(this.value);
   });
 
-  // Task 5.10: Start/Stop
+  // Task 6.4: Apply button
+  applyBtn.addEventListener('click', applyStructuralChanges);
+
+  // Start/Stop
   startStopBtn.addEventListener('click', onStartStop);
 }
 
 // Init on DOM ready
 document.addEventListener('DOMContentLoaded', function() {
   // Grab DOM refs
-  ballEl          = document.getElementById('beat-ball');
+  dotsEl          = document.getElementById('beat-dots');
   gridEl          = document.getElementById('measure-grid');
   dashMeasureEl   = document.getElementById('dash-measure');
   dashLoopEl      = document.getElementById('dash-loop');
@@ -260,13 +325,17 @@ document.addEventListener('DOMContentLoaded', function() {
   subdivCheck     = document.getElementById('subdiv-check');
   subdivValueSelect = document.getElementById('subdiv-value-select');
   startStopBtn    = document.getElementById('start-stop-btn');
+  applyBtn        = document.getElementById('apply-btn');
   warningBanner   = document.getElementById('warning-banner');
 
-  // Task 6.1: Detect Web Audio API support
+  // Detect Web Audio API support
   schedulerInit();
   if (audioFallback) {
     warningBanner.style.display = 'block';
   }
+
+  // Task 3.5: Initialize beat dots
+  renderBeatDots(metronomeState.beatsPerMeasure);
 
   // Initialize grid
   updateMeasureGrid(-1, metronomeState.totalMeasures);
@@ -274,6 +343,6 @@ document.addEventListener('DOMContentLoaded', function() {
   // Bind controls
   bindControls();
 
-  // Task 5.1: Start RAF loop
+  // Start RAF loop
   startRAF();
 });

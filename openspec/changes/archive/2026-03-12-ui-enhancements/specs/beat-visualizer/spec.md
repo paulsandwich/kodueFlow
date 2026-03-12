@@ -1,10 +1,4 @@
-# beat-visualizer
-
-## Purpose
-
-The beat visualizer provides real-time visual feedback for playback, animating beat dots in sync with the audio engine's `beatQueue` and displaying a live dashboard of playback state. It operates entirely within a `requestAnimationFrame` loop to stay synchronized with the Web Audio API clock.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Beat ball animates on every beat via beatQueue
 The system SHALL drive beat dot animation exclusively by consuming entries from `beatQueue` inside a `requestAnimationFrame` loop. The loop SHALL drain all entries where `beatTime <= audioContext.currentTime` each frame. The animated element SHALL be the dot at index `beatNumber` within the `.beat-dots` container.
@@ -60,6 +54,15 @@ Subdivision ticks SHALL produce audio only. No dot SHALL animate on subdivision 
 - **WHEN** subdivision is enabled and a sub-tick fires between beats
 - **THEN** all dots SHALL remain in their current state without any scale or color change
 
+### Requirement: Dashboard displays real-time playback state
+The visualizer SHALL display a dashboard showing current BPM, current measure (1-indexed display of 0-indexed `currentMeasure`), total measures, current loop (1-indexed display), and total loops.
+
+#### Scenario: Dashboard during playback
+- **WHEN** playback is active and on measure 3 of 8, loop 2 of 4
+- **THEN** dashboard SHALL show "MEASURE 3 / 8" and "LOOP 2 / 4"
+
+## ADDED Requirements
+
 ### Requirement: Beat dots display N dots matching beatsPerMeasure
 The system SHALL render exactly `beatsPerMeasure` dots in a horizontal row within `.beat-dots`. When `beatsPerMeasure` changes and is applied, the dot array SHALL be rebuilt to reflect the new count. Dots SHALL wrap to a new row after every 8 dots.
 
@@ -74,10 +77,3 @@ The system SHALL render exactly `beatsPerMeasure` dots in a horizontal row withi
 #### Scenario: Beat count changes after Apply
 - **WHEN** user changes beatsPerMeasure and clicks Apply
 - **THEN** the dot array SHALL be rebuilt to the new count before the next playback
-
-### Requirement: Dashboard displays real-time playback state
-The visualizer SHALL display a dashboard showing current BPM, current measure (1-indexed display of 0-indexed `currentMeasure`), total measures, current loop (1-indexed display), and total loops.
-
-#### Scenario: Dashboard during playback
-- **WHEN** playback is active and on measure 3 of 8, loop 2 of 4
-- **THEN** dashboard SHALL show "MEASURE 3 / 8" and "LOOP 2 / 4"

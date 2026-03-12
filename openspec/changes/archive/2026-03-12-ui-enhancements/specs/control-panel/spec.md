@@ -1,25 +1,4 @@
-# control-panel
-
-## Purpose
-
-The control panel provides user-facing inputs for configuring all playback parameters: BPM, time signature, measures per loop, loop count, subdivision, and the Start/Stop toggle. Controls apply their changes at semantically appropriate boundaries (immediately, next measure, or next loop).
-
-## Requirements
-
-### Requirement: BPM control
-The system SHALL provide a BPM input accepting integer values from 20 to 300 inclusive, with increment and decrement buttons (▲▼). Default value SHALL be 120.
-
-#### Scenario: BPM within range
-- **WHEN** user enters 120 in the BPM field
-- **THEN** the state SHALL update to bpm: 120 immediately
-
-#### Scenario: BPM out of range
-- **WHEN** user enters a value outside 20–300
-- **THEN** the value SHALL be clamped to the nearest boundary (20 or 300) and the input SHALL reflect the clamped value
-
-#### Scenario: BPM change during playback
-- **WHEN** user changes BPM while playback is active
-- **THEN** the new BPM SHALL take effect in the next scheduler cycle without stopping playback
+## MODIFIED Requirements
 
 ### Requirement: Time signature control
 The system SHALL provide separate inputs for the time signature numerator (beats per measure, 1–16, default 4) and denominator (beat unit, selectable from 2/4/8/16, default 4). Changes to these inputs SHALL NOT take effect until the user clicks the Apply button.
@@ -58,6 +37,8 @@ The system SHALL provide an input for loop count, accepting integers from 1 to 9
 - **WHEN** loop count is set to ∞ and Applied
 - **THEN** playback SHALL continue indefinitely until the user presses Stop
 
+## ADDED Requirements
+
 ### Requirement: Apply button triggers structural setting changes
 The system SHALL provide an "套用結構設定" button that commits pending changes to beatsPerMeasure, beatUnit, totalMeasures, and loopCount. BPM changes SHALL continue to take effect immediately without requiring the Apply button.
 
@@ -79,29 +60,3 @@ When the user modifies any structural setting (beatsPerMeasure, beatUnit, totalM
 #### Scenario: Dirty state cleared after Apply
 - **WHEN** user clicks the Apply button
 - **THEN** the Apply button SHALL return to its default appearance
-
-### Requirement: Subdivision control
-The system SHALL provide a toggle to enable subdivision, and when enabled a selector for subdivision value (2, 3, or 4 sub-ticks per beat). Default state SHALL be disabled.
-
-#### Scenario: Subdivision disabled
-- **WHEN** subdivision toggle is off
-- **THEN** no subdivision audio ticks SHALL be produced
-
-#### Scenario: Subdivision enabled with value 2
-- **WHEN** subdivision is enabled and value is 2
-- **THEN** the scheduler SHALL produce 2 evenly spaced audio ticks per beat (on-beat tick + 1 mid-beat tick)
-
-#### Scenario: Subdivision change during playback
-- **WHEN** user toggles subdivision while playback is active
-- **THEN** the change SHALL take effect immediately in the next scheduler cycle
-
-### Requirement: Start / Stop button
-The system SHALL provide a single Start/Stop toggle button. Pressing it while idle SHALL begin playback; pressing it while playing SHALL stop playback and reset all counters.
-
-#### Scenario: Start
-- **WHEN** user clicks Start while idle
-- **THEN** playback SHALL begin from measure 1, beat 1, loop 1
-
-#### Scenario: Stop mid-playback
-- **WHEN** user clicks Stop during playback
-- **THEN** playback SHALL halt immediately, currentBeat/currentMeasure/currentLoop SHALL reset to 0, and the grid SHALL clear
